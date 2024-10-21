@@ -56,13 +56,30 @@ def extract_yearmonth(timestamp: datetime) -> str:
 def find_yearmonth(revision: str) -> str:
     return extract_yearmonth(find_timestamp(revision))
 
-
-def main(page: str, limit: int, data_dir: Path):
+def count_files(data_dir: Path, page_name: str, folders: bool = False) -> int:
+    """
+    This function counts the number of files but if folders=True, it counts the directories
+    """
+    path = data_dir / page_name
+    if folders:
+        count = len([f for f in path.glob("**/*") if f.is_dir()])
+    else:
+        count = len([f for f in path.glob("**/*.xml") if f.is_file()])
+    return count
+    
+def main(page: str, limit: int, data_dir: Path, update: bool):
     """
     Downloads the main page (with revisions) for the given page title.
     Organizes the revisions into a folder structure like
     <page_name>/<year>/<month>/<revision_id>.xml
     """
+    
+    # If update=False, just count the existing revisions without downloading
+    if not update:
+        revision_count = count_files(data_dir=data_dir, page_name=page)
+        print(f"Skipping update. Number of existing files: {revision_count}")
+        return
+    
     print(f"Downloading {limit} revisions of {page} to {data_dir}")
     raw_revisions = download_page_w_revisions(page, limit=limit)
     validate_page(page, page_xml=raw_revisions)
@@ -75,10 +92,9 @@ def main(page: str, limit: int, data_dir: Path):
             revision_path.parent.mkdir(parents=True, exist_ok=True)
         revision_path.write_text(wiki_revision)
     
-    print("Done!") # You should call count_revisions() here and print the number of revisions
+    print(f"Done! Downloaded {count_files(data_dir=data_dir, page_name=page)} files.") # You should call count_revisions() here and print the number of revisions
                    # You should also pass an 'update' argument so that you can decide whether
                    # to update and refresh or whether to simply count the revisions.   
-
 
 def construct_path(page_name: str, save_dir: Path, wiki_revision: str) -> Path:
     revision_id = extract_id(wiki_revision)
@@ -87,7 +103,6 @@ def construct_path(page_name: str, save_dir: Path, wiki_revision: str) -> Path:
     month = str(timestamp.month).zfill(2)
     revision_path = save_dir / page_name / year / month / f"{revision_id}.xml"
     return revision_path
-
 
 def validate_page(page_name: str, page_xml: str) -> None:
     try:
@@ -108,5 +123,10 @@ if __name__ == "__main__":
         default=10,
         help="Number of revisions to download",
     )
+    parser.add_argument(
+        "--update",
+        type=lambda x: (str(x).lower() == 'true'),
+        default=True
+    )
     args = parser.parse_args()
-    main(page=args.page, limit=args.limit, data_dir=DATA_DIR)
+    main(page=args.page, limit=args.limit, data_dir=DATA_DIR, update=args.update)
